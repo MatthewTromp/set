@@ -31,49 +31,72 @@ pub enum Colour {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Card {
-    pub number: Number,
-    pub shape: Shape,
-    pub shading: Shading,
-    pub colour: Colour,
+    number: Number,
+    shape: Shape,
+    shading: Shading,
+    colour: Colour,
 }
 
 impl Card {
     pub fn new(number: Number, shape: Shape, shading: Shading, colour: Colour) -> Self {
         Card {number, shape, shading, colour}
     }
+
+    pub fn get_number(&self) -> Number {
+        self.number
+    }
+
+    pub fn get_shape(&self) -> Shape {
+        self.shape
+    }
+
+    pub fn get_shading(&self) -> Shading {
+        self.shading
+    }
+
+    pub fn get_colour(&self) -> Colour {
+        self.colour
+    }
 }
 
 #[derive(Debug)]
 pub struct Game {
-    pub deck: Vec<Card>,
-    pub in_play: Vec<Card>,
-    pub score: i32,
+    deck: Vec<Card>,
+    in_play: Vec<Card>,
+    score: i32,
 }
 
 pub struct Move(pub usize, pub usize, pub usize);
 
+impl Game {
+    pub fn remaining_cards(&self) -> usize {
+        self.deck.len()
+    }
+
+    pub fn cards_in_play(&self) -> &[Card] {
+        &self.in_play[..]
+    }
+
+    pub fn get_score(&self) -> i32 {
+        self.score
+    }
+}
+
+
+
 pub fn new_game() -> Game {
-    let game = Game {
+    let mut game = Game {
         deck: make_shuffled_deck(),
         in_play: vec![],
         score: 0
     };
 
     // Draw until we have 12 cards
-    let game = draw_until_12(game).expect("Impossible to fail to draw 12 cards from freshly made deck");
-
-    game
-}
-
-fn draw_until_12(mut g: Game) -> Result<Game, Game> {
-    while g.in_play.len() < 12 {
-        match g.deck.pop() {
-            Some(c) => g.in_play.push(c),
-            None => return Err(g),
-        }
+    for _ in 0..12 {
+        game.in_play.push(game.deck.pop().expect("Always have 12 cards in fresh deck"));
     }
 
-    Ok(g)
+    game
 }
 
 // draw 3 new cards for when the user can't find any more cards
@@ -105,32 +128,67 @@ pub fn attempt_move(mut g: Game, &Move(c1, c2, c3): &Move) -> Result<Game, (Game
     let card2 = g.in_play[c2];
     let card3 = g.in_play[c3];
 
-    if is_set(&card1, &card2, &card3) {
-        g.score += 1;
-        if g.deck.len() == 0 {
-            // No more cards in deck. Remove cards from play and that's it
-            sorted_move(&Move(c1, c2, c3)).iter().rev().for_each(|&i| {
-                g.in_play.remove(i as usize);
-            });
-        } else if g.in_play.len() <= 12 {
-            // Normal play. Replace cards in-place
-            vec![c1, c2, c3].iter().for_each(|&i| {
-                g.in_play[i] = g.deck.pop().expect("Impossible to fail to draw a card: deck always has multiple of 3 cards");
-            });
-        } else {
-            // Too many cards. Do not replace
-            sorted_move(&Move(c1, c2, c3)).iter().rev().for_each(|&i| {
-                g.in_play.remove(i as usize);
-            });
-        }
-        Ok(g)
-    } else {
+    if !is_set(&card1, &card2, &card3) {
         g.score -= 1;
-        Err((g, PlayError::NotASet))
+        return Err((g, PlayError::NotASet));
     }
+    
+    g.score += 1;
+    if g.deck.len() == 0 {
+        // No more cards in deck. Remove cards from play and that's it
+        sorted_move(&Move(c1, c2, c3)).iter().rev().for_each(|&i| {
+            g.in_play.remove(i as usize);
+        });
+    } else if g.in_play.len() <= 12 {
+        assert_eq!(g.in_play.len(), 12);
+        // Normal play. Replace cards in-place
+        vec![c1, c2, c3].iter().for_each(|&i| {
+            g.in_play[i] = g.deck.pop().expect("Impossible to fail to draw a card: deck always has multiple of 3 cards");
+        });
+    } else {
+        // Too many cards. Do not replace
+
+        // Remove cards and replace them with cards from the end (minimize card movements)
+        // Here's how this is going to work:
+        // 1. figure out where the end of the play area that's still going to exist is (current len - 3)
+        // 2. remove all cards that are part of a set past that point
+        // 3. Swap out the cards before the new end with those past the new end
+
+        let new_max = g.in_play.len() - 3;
+
+        let mut pre = vec![];
+        let mut post = vec![];
+
+        for i in [c1, c2, c3] {
+            if i < new_max {
+                pre.push(i);
+            } else {
+                post.push(i);
+            }
+        }
+
+        // Sort post from largest to smallest (so that removals don't change positions of other cards to be removed)
+        post.sort();
+        post.reverse();
+
+        for i in post {
+            g.in_play.remove(i);
+        }
+
+        // Replace cards before the break with cards from the end
+        for i in pre {
+            g.in_play[i] = g.in_play.pop().expect("Deck cannot be empty");
+        }
+
+        assert_eq!(g.in_play.len() % 3, 0);
+    }
+
+    Ok(g)
 }
 
 pub fn find_sets(g: &Game) -> Vec<Move> {
+    // TODO: could maybe be more efficient with a set? But probably not just because of the overhead of a hashset lookup
+    // Could probably be made more efficient with some bithacking nonsense (u128)
     let mut sets = vec![];
 
     for i in 0..g.in_play.len() {
@@ -159,7 +217,7 @@ fn make_deck() -> Vec<Card> {
         for shape in vec![Shape::Oval, Shape::Wave, Shape::Diamond] {
             for shading in vec![Shading::Empty, Shading::Half, Shading::Full] {
                 for colour in vec![Colour::Red, Colour::Green, Colour::Purple] {
-                    deck.push(Card {number, shape, shading, colour});
+                    deck.push(Card::new(number, shape, shading, colour));
                 }
             }
         }
