@@ -1,4 +1,4 @@
-use super::backend::{Card, Number, Shape, Shading, Colour as CardColour, Game, Move, new_game, draw_3, attempt_move, find_sets, PlayError};
+use super::backend::{Card, Number, Shape, Shading, Colour as CardColour, Game, Move, find_sets, PlayError};
 
 use std::io;
 use std::io::Write;
@@ -46,6 +46,8 @@ pub fn game_loop() {
 enum Choice {
     Draw3,
     Cheat,
+    Quit,
+    ToggleLetters,
     Move(Move),
 }
 
@@ -81,7 +83,9 @@ fn get_move() -> Choice {
         let ans = get_line();
         match ans.to_ascii_lowercase().get(0..1) {
             Some("p") => break Choice::Draw3,
-            Some("l") => break Choice::Cheat,
+            Some(";") => break Choice::Cheat,
+            Some("k") => break Choice::Quit,
+            Some("l") => break Choice::ToggleLetters,
             _ => (),
         }
         match ans.chars().take(3).map(letter_to_index).collect::<Result<Vec<usize>, ()>>() {
@@ -98,28 +102,32 @@ fn get_move() -> Choice {
 }
 
 fn play_game() {
-    let mut game = new_game();
+    let mut game = Game::new();
 
     // Main game loop
-    'outer: loop {
+    loop {
         print_game(&game);
-        let mve = match get_move() {
+        match get_move() {
             Choice::Draw3 => {
                 if game.cards_in_play().len() == 21 {
                     println!("Can't have more than 21 cards in play! (hint: there's guaranteed to be a set here)");
                     continue;
                 }
-                match draw_3(game) {
-                    Ok(g) => {
-                        game = g;
-                        continue 'outer;
+                match game.draw_3() {
+                    Ok(()) => {
                     }
-                    Err(g) => {
-                        game = g;
+                    Err(()) => {
                         println!("There aren't enough cards in the deck. Game over!");
-                        break 'outer;
+                        break;
                     }
                 }
+            }
+            Choice::Quit => {
+                println!("Thanks for playing!");
+                break;
+            }
+            Choice::ToggleLetters => {
+                println!("Not implemented yet :(");
             }
             Choice::Cheat => {
                 let sets = find_sets(&game);
@@ -135,25 +143,26 @@ fn play_game() {
                         println!("{} {} {}", card_string(&game.cards_in_play()[s.0]), card_string(&game.cards_in_play()[s.1]), card_string(&game.cards_in_play()[s.2]));
                     }
                 }
-                continue 'outer;
+                continue;
             }
-            Choice::Move(m) => m,
-        };
-
-        match attempt_move(game, &mve) {
-            Ok(g) => {
-                game = g;
-            }
-            Err((g, p)) => {
-                match p {
-                    PlayError::NotASet => println!("Not a valid set! Try again!"),
-                    PlayError::InvalidMove => println!("Invalid move! Try again!"),
+            Choice::Move(mve) => {
+                match game.attempt_move(&mve) {
+                    Ok(()) => {
+                    }
+                    Err(p) => {
+                        match p {
+                            PlayError::NotASet => println!("Not a valid set! Try again!"),
+                            PlayError::InvalidMove => println!("Invalid move! Try again!"),
+                        }
+                    }
                 }
-                game = g;
             }
-        }
+        };
     }
 }
+
+// - indicates a filled space
+// 0 indicates a filled space with a _
 
 const DIAMOND_EMPTY: [&str; 11] =
 [r"          ",

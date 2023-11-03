@@ -1,4 +1,4 @@
-use super::backend::{Card, Number, Shape, Shading, Colour as CardColour, Game, Move, new_game, draw_3, attempt_move, find_sets, PlayError};
+use super::{backend::{Card, Number, Shape, Shading, Colour as CardColour, Game, Move, PlayError}, core::{GameCore, GameCard, GameMaker}};
 
 use std::io;
 use std::io::Write;
@@ -16,7 +16,7 @@ fn get_line() -> String {
 }
 
 pub fn game_loop() {
-    print!("Welcome to set! Would you like to play a game? (y/n): ");
+    print!("Welcome to set (implemented with linear logic)! Would you like to play a game? (y/n): ");
     io::stdout().flush().unwrap();
     'outer: loop {
         loop {
@@ -97,32 +97,35 @@ fn get_move() -> Choice {
     }
 }
 
-fn play_game() {
-    let mut game = new_game();
 
+
+fn play_game() {
+    GameMaker.with_core(|a| {play_game_cont(a)});
+}
+
+fn play_game_cont<'a>(a: (GameCore<'a>, [GameCard<'a>; 12])) {
+    let mut game = Game::new(a);
     // Main game loop
     'outer: loop {
         print_game(&game);
-        let mve = match get_move() {
+        match get_move() {
             Choice::Draw3 => {
                 if game.cards_in_play().len() == 21 {
                     println!("Can't have more than 21 cards in play! (hint: there's guaranteed to be a set here)");
                     continue;
                 }
-                match draw_3(game) {
-                    Ok(g) => {
-                        game = g;
+                match game.draw_3() {
+                    Ok(()) => {
                         continue 'outer;
                     }
-                    Err(g) => {
-                        game = g;
+                    Err(()) => {
                         println!("There aren't enough cards in the deck. Game over!");
                         break 'outer;
                     }
                 }
             }
             Choice::Cheat => {
-                let sets = find_sets(&game);
+                let sets = &game.find_sets();
                 if sets.len() == 0 {
                     println!("There are no sets on the board. You have to draw 3 cards.");
                 } else {
@@ -132,24 +135,21 @@ fn play_game() {
                         println!("There are {} sets on the board:", sets.len());
                     }
                     for s in sets.iter() {
-                        println!("{} {} {}", card_string(&game.cards_in_play()[s.0]), card_string(&game.cards_in_play()[s.1]), card_string(&game.cards_in_play()[s.2]));
+                        println!("{} {} {}", card_string(&game.cards_in_play()[s.0].get_card()), card_string(&game.cards_in_play()[s.1].get_card()), card_string(&game.cards_in_play()[s.2].get_card()));
                     }
                 }
                 continue 'outer;
             }
-            Choice::Move(m) => m,
-        };
-
-        match attempt_move(game, &mve) {
-            Ok(g) => {
-                game = g;
-            }
-            Err((g, p)) => {
-                match p {
-                    PlayError::NotASet => println!("Not a valid set! Try again!"),
-                    PlayError::InvalidMove => println!("Invalid move! Try again!"),
+            Choice::Move(c1, c2, c3) => {
+                match game.attempt_move(Move(c1, c2, c3)) {
+                    Ok(()) => (),
+                    Err( p) => {
+                        match p {
+                            PlayError::NotASet => println!("Not a valid set! Try again!"),
+                            PlayError::InvalidMove => println!("Invalid move! Try again!"),
+                        }
+                    }
                 }
-                game = g;
             }
         }
     }
@@ -274,7 +274,7 @@ const WAVE_FULL: [&str; 11] =
  r"  \00000/ "];
 
 
-fn print_game(g: &Game) {
+fn print_game<'a>(g: &Game<'a>) {
     println!("Score: {}", g.get_score());
     println!("Cards left in deck: {}", g.remaining_cards());
     println!();
@@ -287,13 +287,13 @@ fn print_game(g: &Game) {
     for (i, c) in g.cards_in_play().iter().enumerate() {
         match i % 3 {
             0 => {
-                line1.push(*c);
+                line1.push(*c.get_card());
             }
             1 => {
-                line2.push(*c);
+                line2.push(*c.get_card());
             }
             2 => {
-                line3.push(*c);
+                line3.push(*c.get_card());
             }
             _ => unreachable!(),
         }

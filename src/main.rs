@@ -8,6 +8,8 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     if args.contains(&"--projective".to_string()) {
         projective::game_loop();
+    } else if args.contains(&"--linear".to_string()) {
+        llnormal::game_loop();
     } else {
         normal::game_loop();
     }

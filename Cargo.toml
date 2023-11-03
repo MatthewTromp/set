@@ -6,6 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+derivative = "2.2.0"
 # bevy = "0.11.0"
 rand = "0.8.5"
+termcolor = "1.2.0"
 # text_io = "0.1.12"
